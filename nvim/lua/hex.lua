@@ -123,6 +123,42 @@ local function highlight_cursor(buf)
 	end
 end
 
+-- 0-based byte index (0..15) for a cursor column; nil in the offset column
+local function byte_index(col)
+	if col >= ASCII_START then
+		return col - ASCII_START
+	elseif col >= HEX_START and col < HEX_END then
+		local off = col - HEX_START
+		local group, within = math.floor(off / 5), off % 5
+		if within >= 4 then
+			return group * 2 + 1 -- on the space after a group: snap to the previous byte
+		end
+		return group * 2 + math.floor(within / 2)
+	end
+	return nil
+end
+
+-- Jump between the hex digits of a byte and its character in the ASCII column
+local function jump_pair(buf)
+	local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+	local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+	if not line:match("^%x+:") then
+		return
+	end
+
+	local target
+	if col >= ASCII_START then
+		local k = math.min(col - ASCII_START, 15)
+		target = HEX_START + k * 2 + math.floor(k / 2)
+	else
+		local k = byte_index(col) or 0
+		-- clamp to the last character on a short final line
+		target = math.min(ASCII_START + k, math.max(#line - 1, ASCII_START))
+	end
+
+	pcall(vim.api.nvim_win_set_cursor, 0, { row, target })
+end
+
 -- Keep both columns consistent after an edit on the current line.
 -- The direction is chosen by the cursor column: an edit in the ASCII column
 -- updates hex, an edit in the hex column updates ASCII. After the rewrite the
@@ -229,6 +265,9 @@ local function load(buf, path)
 	highlight_cursor(buf)
 	lock_layout(buf)
 	lock_multicursor(buf)
+    vim.keymap.set("n", "<Tab>", function()
+        jump_pair(buf)
+    end, { buffer = buf, nowait = true, desc = "Jump between hex and ASCII" })
 end
 
 -- Convert the text back to bytes and write them to the real file.

@@ -356,7 +356,7 @@ require("pack_list").pack_list({
 			formatters_by_ft = {
 				lua = { "stylua" },
 				gdscript = { "gdformat" },
-				kotlin = { "ktlint" },
+				kotlin = { "ktlint", lsp_format = "prefer" },
 				sh = { "shfmt" },
 			},
 			default_format_opts = { lsp_format = "fallback" },
@@ -387,10 +387,13 @@ require("pack_list").pack_list({
 		"neovim/nvim-lspconfig",
 		module = false,
 		config = function()
-			vim.lsp.enable({ "lua_ls", "gdscript", "kotlin_language_server", "bashls" })
+			vim.lsp.enable({ "lua_ls", "gdscript", "kotlin_lsp", "bashls" })
 			vim.lsp.config("lua_ls", {
 				settings = { Lua = { runtime = { version = "LuaJIT" } } },
 			})
+            vim.lsp.config("kotlin_lsp", {
+                cmd = { vim.fn.expand("~/.local/bin/kotlin-lsp"), "--stdio" },
+            })
 		end,
 	},
 	{

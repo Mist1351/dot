@@ -447,6 +447,40 @@ require("pack_list").pack_list({
 		"tpope/vim-fugitive",
 		module = false,
 		config = function()
+			-- Close diff from any window: keep the working file, close the rest
+			local function close_diff()
+				local wins = vim.tbl_filter(function(w)
+					return vim.wo[w].diff
+				end, vim.api.nvim_tabpage_list_wins(0))
+				if #wins == 0 then
+					return notify("No diff to close", vim.log.levels.INFO)
+				end
+
+				-- prefer the real file over fugitive:// buffers
+				local keep = vim.api.nvim_get_current_win()
+				for _, w in ipairs(wins) do
+					local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(w))
+					if not name:match("^fugitive://") then
+						keep = w
+						break
+					end
+				end
+
+				for _, w in ipairs(wins) do
+					if w ~= keep then
+						local ok = pcall(vim.api.nvim_win_close, w, false)
+						if not ok then
+							notify("Unsaved changes in the index buffer: :w or :q!", vim.log.levels.WARN)
+						end
+					end
+				end
+				if vim.api.nvim_win_is_valid(keep) then
+					vim.api.nvim_set_current_win(keep)
+					vim.cmd("diffoff")
+				end
+			end
+
+			map("n", "<leader>gq", close_diff, { desc = "Close diff" })
 			map("n", "<leader>gg", "<cmd>Git<cr>", { desc = "Git status" })
 			map("n", "<leader>gb", "<cmd>Git blame<cr>", { desc = "Git blame" })
 			map("n", "<leader>gd", "<cmd>Gdiffsplit<cr>", { desc = "Git diff" })

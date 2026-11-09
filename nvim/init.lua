@@ -150,6 +150,13 @@ map("n", "<leader>bo", function()
 	end
 end, { desc = "Close other buffers" })
 
+-- tabs
+map("n", "<leader>tn", "<cmd>tabnext<cr>", { desc = "Next tab" })
+map("n", "<leader>tp", "<cmd>tabprevious<cr>", { desc = "Previous tab" })
+map("n", "<S-C-h>", "<cmd>tabnext<cr>", { desc = "Next tab" })
+map("n", "<S-C-l>", "<cmd>tabprevious<cr>", { desc = "Previous tab" })
+map("n", "<leader>td", "<cmd>tabclose<cr>", { desc = "Close tab" })
+
 local default_markers = { "project.godot", ".git", "tags", "build.gradle.kts" }
 
 local function project_root(markers, include_cwd)

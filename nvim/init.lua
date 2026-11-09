@@ -245,6 +245,10 @@ vim.api.nvim_create_autocmd("PackChanged", {
 	end,
 })
 
+local function gdck_root(path)
+	return vim.fs.root(path, { "gdck.toml", ".gdck.toml" })
+end
+
 -- plugins
 require("pack_list").pack_list({
 	{
@@ -362,9 +366,35 @@ require("pack_list").pack_list({
 		opts = {
 			formatters_by_ft = {
 				lua = { "stylua" },
-				gdscript = { "gdformat" },
+				gdscript = { "gdscript_formatter", "gdck", "gdformat", stop_after_first = true, lsp_format = "never" },
 				kotlin = { "ktlint", lsp_format = "prefer" },
 				sh = { "shfmt" },
+			},
+			formatters = {
+				gdscript_formatter = {
+					command = "gdscript-formatter",
+					args = {},
+					stdin = true,
+					condition = function(_, ctx)
+						return vim.fn.executable("gdscript-formatter")
+					end,
+					cwd = function(_, ctx)
+						return project_root({ "project.godot" })
+					end,
+					exit_codes = { 0 },
+				},
+				gdck = {
+					command = "gdck",
+					args = { "format", "-" },
+					stdin = true,
+					condition = function(_, ctx)
+						return gdck_root(ctx.dirname) ~= nil and vim.fn.executable("gdck")
+					end,
+					cwd = function(_, ctx)
+						return gdck_root(ctx.dirname)
+					end,
+					exit_codes = { 0, 1 },
+				},
 			},
 			default_format_opts = { lsp_format = "fallback" },
 		},
@@ -394,13 +424,23 @@ require("pack_list").pack_list({
 		"neovim/nvim-lspconfig",
 		module = false,
 		config = function()
-			vim.lsp.enable({ "lua_ls", "gdscript", "kotlin_lsp", "bashls" })
+			vim.lsp.enable({ "lua_ls", "gdscript", "gdck", "kotlin_lsp", "bashls" })
 			vim.lsp.config("lua_ls", {
 				settings = { Lua = { runtime = { version = "LuaJIT" } } },
 			})
-            vim.lsp.config("kotlin_lsp", {
-                cmd = { vim.fn.expand("~/.local/bin/kotlin-lsp"), "--stdio" },
-            })
+			vim.lsp.config("kotlin_lsp", {
+				cmd = { vim.fn.expand("~/.local/bin/kotlin-lsp"), "--stdio" },
+			})
+			vim.lsp.config("gdck", {
+				cmd = { "gdck", "lsp" },
+				filetypes = { "gdscript" },
+				root_dir = function(bufnr, on_dir)
+					local root = gdck_root(bufnr)
+					if root then
+						on_dir(root)
+					end
+				end,
+			})
 		end,
 	},
 	{

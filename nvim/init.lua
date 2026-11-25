@@ -6,6 +6,17 @@ local function notify(msg, level)
 	vim.notify(msg, level or vim.log.levels.INFO)
 end
 
+function _G.sel_count()
+	local mode = vim.fn.mode()
+	if not mode:match("[vV\22]") then
+		return ""
+	end
+	return "[" .. (vim.fn.wordcount().visual_chars or 0) .. " char(s)] "
+end
+
+vim.o.laststatus = 2
+vim.o.statusline = "%<%f %h%m%r%=%{v:lua.sel_count()}%-14.(%l,%c%V%) %P"
+
 -- options
 for k, v in pairs({
 	number = true,
@@ -60,6 +71,32 @@ map("t", "<Esc><Esc>", [[<C-\><C-n>]])
 for _, k in ipairs({ "h", "j", "k", "l" }) do
 	map("t", "<C-w>" .. k, "<C-\\><C-n><C-w>" .. k, { silent = true })
 end
+
+-- mcursor
+local mc_ns = vim.api.nvim_create_namespace("nvim.multicursor")
+
+-- add = true: add cursor and move next
+-- add = false: move next
+local function mc_next(add)
+	local word = vim.fn.expand("<cword>")
+	if word == "" then
+		return
+	end
+	local pat = "\\V\\<" .. vim.fn.escape(word, "\\") .. "\\>"
+	vim.fn.search(pat, "bcW")
+	if add then
+		local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+		vim.api.nvim_buf_set_extmark(0, mc_ns, row - 1, col, {})
+	end
+	vim.fn.search(pat, "w")
+end
+
+map("n", "<C-,>", function()
+	mc_next(true)
+end, { desc = "Multicursor: add + next" })
+map("n", "<C-;>", function()
+	mc_next(false)
+end, { desc = "Multicursor: skip" })
 
 --
 map("n", "<Esc>", "<cmd>noh<cr>", { desc = "Clear highlights" })
@@ -229,6 +266,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		map("n", "gd", vim.lsp.buf.definition, { buffer = ev.buf, desc = "Definition" })
 		map("n", "gD", vim.lsp.buf.declaration, { buffer = ev.buf, desc = "Declaration" })
 		map("n", "<leader>cr", vim.lsp.buf.rename, { buffer = ev.buf, desc = "Rename symbol" })
+		map("n", "<leader>ca", vim.lsp.buf.code_action, { buffer = ev.buf, desc = "Code action" })
 	end,
 })
 
@@ -289,6 +327,9 @@ require("pack_list").pack_list({
 			map("n", "<leader>fg", pick.builtin.grep_live, { desc = "Live grep" })
 			map("n", "<leader>fb", pick.builtin.buffers, { desc = "Buffers" })
 			map("n", "<leader>fh", pick.builtin.help, { desc = "Help" })
+			map("n", "<leader>fR", function()
+				pcall(pick.builtin.resume)
+			end, { desc = "Resume last search" })
 		end,
 	},
 	{
@@ -361,6 +402,9 @@ require("pack_list").pack_list({
 			mappings = { start = "gl", start_with_preview = "gL" },
 		},
 	},
+	-- {
+	-- 	"nvim-mini/mini.ai",
+	-- },
 	{
 		"stevearc/conform.nvim",
 		opts = {
@@ -369,6 +413,7 @@ require("pack_list").pack_list({
 				gdscript = { "gdscript_formatter", "gdck", "gdformat", stop_after_first = true, lsp_format = "never" },
 				kotlin = { "ktlint", lsp_format = "prefer" },
 				sh = { "shfmt" },
+				json = { "jq" },
 			},
 			formatters = {
 				gdscript_formatter = {
@@ -394,6 +439,9 @@ require("pack_list").pack_list({
 						return gdck_root(ctx.dirname)
 					end,
 					exit_codes = { 0, 1 },
+				},
+				jq = {
+					prepend_args = { "--indent", "4" },
 				},
 			},
 			default_format_opts = { lsp_format = "fallback" },
@@ -424,7 +472,7 @@ require("pack_list").pack_list({
 		"neovim/nvim-lspconfig",
 		module = false,
 		config = function()
-			vim.lsp.enable({ "lua_ls", "gdscript", "gdck", "kotlin_lsp", "bashls" })
+			vim.lsp.enable({ "lua_ls", "gdscript", "gdck", "kotlin_lsp", "bashls", "rust_analyzer", "marksman" })
 			vim.lsp.config("lua_ls", {
 				settings = { Lua = { runtime = { version = "LuaJIT" } } },
 			})
@@ -440,6 +488,13 @@ require("pack_list").pack_list({
 						on_dir(root)
 					end
 				end,
+			})
+			vim.lsp.config("rust_analyzer", {
+				settings = {
+					["rust-analyzer"] = {
+						check = { command = "clippy" },
+					},
+				},
 			})
 		end,
 	},
@@ -487,6 +542,84 @@ require("pack_list").pack_list({
 		end,
 	},
 	{
+		"martintrojer/redline.nvim",
+		module = "redline",
+		opts = {
+			providers = { difftool = false, minigit = false, fugitive = true },
+		},
+	},
+	{ "martintrojer/fugitive-core.nvim" },
+	{
+		"martintrojer/jj-fugitive",
+		config = function()
+			local function jj(cmd)
+				return "<cmd>J " .. cmd .. "<cr>"
+			end
+
+			local jj_scratch_names = { "jj-commit", "jj-describe" }
+
+			local function is_jj_scratch(buf)
+				local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+				return vim.iter(jj_scratch_names):any(function(prefix)
+					return vim.startswith(name, prefix)
+				end)
+			end
+
+			vim.api.nvim_create_autocmd({ "BufWinEnter", "BufFilePost" }, {
+				group = vim.api.nvim_create_augroup("JjWipeScratch", { clear = true }),
+				callback = function(ev)
+					if is_jj_scratch(ev.buf) then
+						vim.bo[ev.buf].bufhidden = "wipe"
+					end
+				end,
+			})
+
+			map("n", "<leader>jj", jj(""), { desc = "jj: log" })
+			map("n", "<leader>jl", jj("log"), { desc = "jj: log" })
+			map("n", "<leader>js", jj("status"), { desc = "jj: status" })
+			map("n", "<leader>jd", function()
+				vim.cmd("J diff " .. vim.fn.fnameescape(vim.fn.expand("%")))
+			end, { desc = "jj: diff (file)" })
+			map("n", "<leader>jD", jj("diff"), { desc = "jj: diff (working copy)" })
+			map("n", "<leader>jb", jj("annotate"), { desc = "jj: blame" })
+			map("n", "<leader>jm", jj("bookmark"), { desc = "jj: bookmarks" })
+			map("n", "<leader>jc", jj("describe"), { desc = "jj: describe @" })
+			map("n", "<leader>jC", jj("commit"), { desc = "jj: commit (describe + new)" })
+			map("n", "<leader>jn", jj("new"), { desc = "jj: new change" })
+			map("n", "<leader>jq", jj("squash"), { desc = "jj: squash" })
+			map("n", "<leader>ju", jj("undo"), { desc = "jj: undo" })
+			map("n", "<leader>jr", jj("redo"), { desc = "jj: redo" })
+			map("n", "<leader>jp", jj("push"), { desc = "jj: push" })
+			map("n", "<leader>jf", jj("fetch"), { desc = "jj: fetch" })
+			map({ "n", "x" }, "<leader>jo", jj("browse"), { desc = "jj: open on remote" })
+		end,
+	},
+	{
+		"lewis6991/gitsigns.nvim",
+		opts = {
+			signs = {
+				add = { text = "+" },
+				change = { text = "=" },
+				delete = { text = "_" },
+				topdelete = { text = "‾" },
+				changedelete = { text = "~" },
+				untracked = { text = "┆" },
+			},
+			on_attach = function(buf)
+				local gs = require("gitsigns")
+
+				map("n", "]h", gs.next_hunk, { buffer = buf, desc = "Next hunk" })
+				map("n", "[h", gs.prev_hunk, { buffer = buf, desc = "Prev hunk" })
+
+				map("n", "<leader>ghp", gs.preview_hunk, { buffer = buf, desc = "Preview hunk" })
+				map("n", "<leader>ghr", gs.reset_hunk, { buffer = buf, desc = "Reset hunk" })
+				map("n", "<leader>ghR", gs.reset_buffer, { buffer = buf, desc = "Reset buffer" })
+				map("n", "<leader>ghs", gs.stage_hunk, { buffer = buf, desc = "Stage hunk" })
+				map("n", "<leader>gB", gs.blame_line, { buffer = buf, desc = "Blame line" })
+			end,
+		},
+	},
+	{
 		"folke/which-key.nvim",
 		module = "which-key",
 		opts = {
@@ -497,12 +630,16 @@ require("pack_list").pack_list({
 		config = function(wk)
 			wk.add({
 				{ "<leader>b", group = "buffers" },
+				{ "<leader>t", group = "tabs" },
 				{ "<leader>c", group = "code" },
 				{ "<leader>f", group = "find" },
 				{ "<leader>l", group = "lua funcs", mode = { "n", "x" } },
 				{ "<leader>p", group = "overseer" },
 				{ "<leader>s", group = "session" },
 				{ "<leader>g", group = "git" },
+				{ "<leader>j", group = "jujutsu" },
+				{ "<leader>x", group = "extra" },
+				{ "<leader>o", group = "org" },
 			})
 
 			map("n", "<leader>?", function()
@@ -539,6 +676,7 @@ require("pack_list").pack_list({
 				"json",
 				"yaml",
 				"toml",
+				"rust",
 			})
 
 			vim.api.nvim_create_autocmd("FileType", {
@@ -561,6 +699,42 @@ require("pack_list").pack_list({
 		"saghen/blink.cmp",
 		version = vim.version.range("1.*"),
 		opts = { keymap = { preset = "default" }, signature = { enabled = true } },
+	},
+	{ "3rd/image.nvim" },
+	{
+		"3rd/diagram.nvim",
+		module = "diagram",
+		opts = {
+			events = {
+				render_buffer = {},
+				clear_buffer = { "BufLeave" },
+			},
+			renderer_options = {
+				mermaid = {
+					scale = 2,
+				},
+			},
+		},
+		config = function(diagram)
+			vim.api.nvim_create_autocmd("FileType", {
+				pattern = "markdown",
+				callback = function(ev)
+					vim.keymap.set("n", "K", function()
+						require("diagram").show_diagram_hover()
+					end, { buffer = ev.buf, desc = "Show diagram in new tab" })
+				end,
+			})
+		end,
+	},
+	{
+		"nvim-orgmode/orgmode",
+		opts = {
+			org_agenda_files = { "~/org/**/*" },
+			org_default_notes_file = "~/org/refile.org",
+		},
+	},
+	{
+		"MeanderingProgrammer/render-markdown.nvim",
 	},
 })
 

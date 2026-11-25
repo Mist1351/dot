@@ -628,7 +628,7 @@ function M.setup()
 	link("TroubleSignHint", "DiagnosticSignHint")
 
 	-- bufferline.nvim
-	local accent = c.visual -- оранжевый в тёмной, фиолетовый в светлой теме
+	local accent = c.visual -- orange in dark theme, purple in light theme
 
 	hi("BufferLineFill", { bg = c.tab_bg })
 	hi("BufferLineBackground", { fg = c.comment, bg = c.tab_bg })

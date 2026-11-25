@@ -32,7 +32,7 @@ return {
 		return {
 			{
 				name = "Godot: Run",
-				desc = "Запуск игры",
+				desc = "Run the game",
 				builder = function()
 					return {
 						cmd = { "godot" },
@@ -44,7 +44,7 @@ return {
 			},
 			{
 				name = "Godot: Editor",
-				desc = "Открыть редактор (держит порт LSP)",
+				desc = "Open editor (keeps LSP port open)",
 				builder = function()
 					return {
 						cmd = { "godot" },
@@ -67,12 +67,12 @@ return {
 			},
 			{
 				name = "Godot: Check script",
-				desc = "Проверка текущего .gd файла",
+				desc = "Check current .gd file",
 				condition = { filetype = { "gdscript" } },
 				builder = function()
 					local rel = vim.fs.relpath(root, vim.api.nvim_buf_get_name(0))
 					if not rel then
-						vim.notify("Файл вне проекта Godot", vim.log.levels.WARN)
+						vim.notify("File is outside the Godot project", vim.log.levels.WARN)
 						return { cmd = { "true" }, components = { "default" } }
 					end
 					return {
